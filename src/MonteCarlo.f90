@@ -1,8 +1,66 @@
 program main
 use mersenne_twister
+use precision, only: dp, eps
+implicit none
+type(random_stat) rand_stat ! for random number generator
+integer NT
+integer ii, replicate, seed
+integer, parameter :: NT_values(8)= [1000, 10000, 50000, 100000, 200000, 300000, 400000, 500000]
+character(LEN=30) :: buffer
+character(LEN=30) :: fname
+logical isfile, verbose
+integer widom_attempts, widom_successes
+real(dp) phi
+logical integer_steps
+
+verbose = .True.
+Call get_command_Argument(1,buffer)
+read(buffer,*) seed
+print*, "seed", seed
+Call get_command_Argument(2,buffer)
+read(buffer,*) fname
+print*, "fname", fname
+Call get_command_Argument(3,buffer)
+read(buffer,*) integer_steps
+print*, "integer_steps", integer_steps
+
+!call random_setseed(7343, rand_stat) ! random seed for head node
+call random_setseed(seed, rand_stat) ! random seed for head node
+
+do replicate=1,100
+    do ii = 1,8
+        NT = NT_values(ii)
+        call calc_P(rand_stat, NT, verbose, widom_attempts, widom_successes, phi, integer_steps)
+
+        inquire(file = fname, exist = isfile)
+        if (isfile) then
+            open (unit = 5, file = fname, status ='OLD', POSITION = "append")
+        else
+            open (unit = 5, file = fname, status = 'NEW')
+        endif
+        write(5,*) NT, widom_attempts, widom_successes, phi
+        close(5)
+
+    enddo
+enddo
+
+end program
+
+
+subroutine calc_P(rand_stat, NT, verbose, widom_attempts, widom_successes, phi,&
+                  integer_steps)
+use mersenne_twister
 use binning
 use precision, only: dp, eps
 implicit none
+
+type(random_stat), intent(inout) :: rand_stat
+integer, intent(in) :: NT
+logical, intent(in) :: verbose
+integer, intent(out) :: widom_attempts
+integer, intent(out) :: widom_successes
+real(dp), intent(out) :: phi
+logical, intent(in) :: integer_steps  ! On lattice?
 
 ! --------------
 ! Binning variables
@@ -13,7 +71,6 @@ integer setBinShape(3)
 double precision maxvals(3)
 double precision minvals(3)
 
-integer NT
 real(dp), allocatable, dimension(:,:) :: R_real
 real(dp) RP(3)
 double precision sideLength
@@ -22,9 +79,7 @@ real(dp) L_big_real  ! side length of cubes
 integer ix, iy, iz ! integers for selecting position
 integer ii,jj
 logical success, isCollision  ! collison happend
-type(random_stat) rand_stat ! for random number generator
 integer ind_move ! move counter "time"
-logical integer_steps  ! On lattice?
 logical periodic
 
 
@@ -43,7 +98,6 @@ integer percent_slide
 ! ---------------
 ! Measureing Observables
 ! ---------------
-integer widom_attempts, widom_successes
 integer t_start_taking_data
 integer lowest_bead
 integer bin_counts(10)
@@ -53,11 +107,12 @@ logical trackLowest
 ! ------------------
 !  Variable parameters
 ! ------------------
-NT = 10000
+!NT = 10000
 L_big_real=10.0_dp
 sideLength = 1000.0_dp
-N_moves = 90000000
-integer_steps = .False.
+! if you changes L_big_real or side length, be sure to change int insert move below!
+N_moves = MAX(10000000, 2000*NT)
+!integer_steps = .True.
 bin_width=1.0_dp
 step_size=2
 trackLowest=.False.
@@ -65,7 +120,6 @@ periodic = .True.
 
 
 allocate( R_real(3,NT) )
-call random_setseed(7343, rand_stat) ! random seed for head node
 
 t_start_taking_data = N_moves/2
 maxvals=[sideLength, sideLength, sideLength]
@@ -134,8 +188,13 @@ do ind_move=1,N_moves
         call random_index(NT, irnd, rand_stat)
         ii=irnd(1)
         if (integer_steps) then
-            print*, "Not written yet ..."
-            stop
+            call random_index(100, irnd3, rand_stat)
+            if (periodic) then
+                RP(1) = (real(irnd3(1),dp)-0.5_dp)*L_big_real
+            else
+                print*, "Not written yet ..."
+                stop
+            endif
         else
             call random_number(step_vec, rand_stat)
             if (periodic) then
@@ -202,20 +261,24 @@ do ind_move=1,N_moves
 
 
 enddo
-print*, "----------------------------------------------------"
-print*, "Done"
-!do ii=1, NT
-!    print*, R_real(:,ii)
-!enddo
-print*, "Average position", [sum(R_real(1,:))/NT, sum(R_real(2,:))/NT, sum(R_real(3,:))/NT]
-print*, "widom success rate", real(widom_successes,dp)/real(widom_attempts,dp)
-print*, "move success rate", real(move_success,dp)/real(move_attempts,dp)
-print*, "Phi ", real(NT,dp)*(L_big_real**3)/(sideLength**3)
-if (trackLowest) print*, "bin_counts", bin_counts
-print*, "of total", widom_attempts
+if (verbose) then
+    print*, "----------------------------------------------------"
+    print*, "Done"
+    !do ii=1, NT
+    !    print*, R_real(:,ii)
+    !enddo
+    print*, "Average position", [sum(R_real(1,:))/NT, sum(R_real(2,:))/NT, sum(R_real(3,:))/NT]
+    print*, "widom success rate", real(widom_successes,dp)/real(widom_attempts,dp)
+    print*, "move success rate", real(move_success,dp)/real(move_attempts,dp)
+    print*, "Phi ", real(NT,dp)*(L_big_real**3)/(sideLength**3)
+    if (trackLowest) print*, "bin_counts", bin_counts
+    print*, "of total", widom_attempts
+endif
+phi = real(NT,dp)*(L_big_real**3)/(sideLength**3)
+
 
 deallocate( R_real )
-end program
+end subroutine
 function isCollision(bin, NT, R_real, RP, L_big_real, exclude, periodic, sideLength)
     use binning
     use precision, only: dp, eps

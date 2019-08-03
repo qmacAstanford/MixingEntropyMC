@@ -319,7 +319,7 @@ contains
     end subroutine
 
     recursive subroutine findNeighbors(bin,location,radius,R,NT,&
-                  maxNeighbors,neighbors,distances,nNeighbors)
+                  maxNeighbors,neighbors,distances,nNeighbors, normType)
         implicit none
         Type(binType), intent(in) :: bin
         real(dp), intent(in) :: location(3) !
@@ -330,6 +330,7 @@ contains
         integer, intent(inout) :: nNeighbors !number of neighbors found (so far)
         integer, intent(inout):: neighbors(maxNeighbors) ! list of bead ID's
         real(dp), intent(inout) :: distances(maxNeighbors) ! list of |r-r| values
+        integer, intent(in) :: normType ! 2 for ecledian, -1 for max norm
         integer dd,xx,yy,zz,ii,binIndex
         integer lower(3),upper(3)
         real(dp) distance
@@ -356,23 +357,41 @@ contains
                     do zz = lower(3),upper(3)
                         binIndex = zz + bin%binsShape(3)*((yy-1) + bin%binsShape(2)*(xx-1))
                         call findNeighbors(bin%bins(binIndex),location,radius,R,NT,&
-                            maxNeighbors,neighbors,distances,nNeighbors)
+                            maxNeighbors,neighbors,distances,nNeighbors, normType)
                     enddo
                 enddo
             enddo
         else
             do ii = 1,bin%numberOfBeads
-                distance= (R(1,bin%beads(ii))-location(1))**2&
-                         +(R(2,bin%beads(ii))-location(2))**2&
-                         +(R(3,bin%beads(ii))-location(3))**2
-                if (distance.le.(radius**2)) then
-                    !if (nNeighbors .ge. maxNeighbors) then
-                    !    print*, "Error: Too many neighbors"
-                    !    stop
-                    !endif
-                    nNeighbors = nNeighbors + 1
-                    distances(nNeighbors) = sqrt(distance)
-                    neighbors(nNeighbors) = bin%beads(ii)
+                if (normType == 2) then
+                    distance= (R(1,bin%beads(ii))-location(1))**2&
+                             +(R(2,bin%beads(ii))-location(2))**2&
+                             +(R(3,bin%beads(ii))-location(3))**2
+                    if (distance.le.(radius**2)) then
+                        !if (nNeighbors .ge. maxNeighbors) then
+                        !    print*, "Error: Too many neighbors"
+                        !    stop
+                        !endif
+                        nNeighbors = nNeighbors + 1
+                        distances(nNeighbors) = sqrt(distance)
+                        neighbors(nNeighbors) = bin%beads(ii)
+                    endif
+                elseif (normType == -1) then
+                    distance = MAX(abs( R(1,bin%beads(ii)) - location(1) ), &
+                                    abs( R(2,bin%beads(ii)) - location(2) ), &
+                                    abs( R(3,bin%beads(ii)) - location(3) ))
+
+                    if (distance.le.radius) then
+                        !if (nNeighbors .ge. maxNeighbors) then
+                        !    print*, "Error: Too many neighbors"
+                        !    stop
+                        !endif
+                        nNeighbors = nNeighbors + 1
+                        distances(nNeighbors) = distance
+                        neighbors(nNeighbors) = bin%beads(ii)
+                    endif
+                else
+                    print*, "Norm type not recognized"
                 endif
             enddo
         endif

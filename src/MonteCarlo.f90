@@ -12,17 +12,24 @@ logical isfile, verbose
 integer widom_attempts, widom_successes
 real(dp) phi
 logical integer_steps
+real(dp) L_big_real
 
 verbose = .True.
 Call get_command_Argument(1,buffer)
 read(buffer,*) seed
 print*, "seed", seed
+
 Call get_command_Argument(2,buffer)
 read(buffer,*) fname
 print*, "fname", fname
+
 Call get_command_Argument(3,buffer)
 read(buffer,*) integer_steps
 print*, "integer_steps", integer_steps
+
+Call get_command_Argument(4,buffer)
+read(buffer,*) L_big_real
+print*, "L_big_real", L_big_real
 
 !call random_setseed(7343, rand_stat) ! random seed for head node
 call random_setseed(seed, rand_stat) ! random seed for head node
@@ -30,7 +37,7 @@ call random_setseed(seed, rand_stat) ! random seed for head node
 do replicate=1,100
     do ii = 1,8
         NT = NT_values(ii)
-        call calc_P(rand_stat, NT, verbose, widom_attempts, widom_successes, phi, integer_steps)
+        call calc_P(rand_stat, NT, verbose, widom_attempts, widom_successes, phi, integer_steps, L_big_real)
 
         inquire(file = fname, exist = isfile)
         if (isfile) then
@@ -48,7 +55,7 @@ end program
 
 
 subroutine calc_P(rand_stat, NT, verbose, widom_attempts, widom_successes, phi,&
-                  integer_steps)
+                  integer_steps, L_big_real)
 use mersenne_twister
 use binning
 use precision, only: dp, eps
@@ -61,6 +68,7 @@ integer, intent(out) :: widom_attempts
 integer, intent(out) :: widom_successes
 real(dp), intent(out) :: phi
 logical, intent(in) :: integer_steps  ! On lattice?
+real(dp), intent(in) :: L_big_real  ! side length of cubes
 
 ! --------------
 ! Binning variables
@@ -74,7 +82,6 @@ double precision minvals(3)
 real(dp), allocatable, dimension(:,:) :: R_real
 real(dp) RP(3)
 double precision sideLength
-real(dp) L_big_real  ! side length of cubes
 
 integer ix, iy, iz ! integers for selecting position
 integer ii,jj
@@ -108,8 +115,7 @@ logical trackLowest
 !  Variable parameters
 ! ------------------
 !NT = 10000
-L_big_real=10.0_dp
-sideLength = 1000.0_dp
+sideLength = 100.0_dp*L_big_real
 ! if you changes L_big_real or side length, be sure to change int insert move below!
 N_moves = MAX(10000000, 2000*NT)
 !integer_steps = .True.
@@ -188,9 +194,11 @@ do ind_move=1,N_moves
         call random_index(NT, irnd, rand_stat)
         ii=irnd(1)
         if (integer_steps) then
-            call random_index(100, irnd3, rand_stat)
+            call random_index(int(sideLength+eps), irnd3, rand_stat)
             if (periodic) then
-                RP(1) = (real(irnd3(1),dp)-0.5_dp)*L_big_real
+                RP(1) = real(irnd3(1)-1,dp)
+                RP(2) = real(irnd3(2)-1,dp)
+                RP(3) = real(irnd3(3)-1,dp)
             else
                 print*, "Not written yet ..."
                 stop
@@ -239,12 +247,25 @@ do ind_move=1,N_moves
         !--------------------------
         ! widom insertion
         !--------------------------
-        call random_number(step_vec, rand_stat)
-        if (periodic) then
-            RP = step_vec*sideLength
+        if (integer_steps) then
+            call random_index(int(sideLength+eps), irnd3, rand_stat)
+            if (periodic) then
+                RP(1) = real(irnd3(1)-1,dp)
+                RP(2) = real(irnd3(2)-1,dp)
+                RP(3) = real(irnd3(3)-1,dp)
+            else
+                print*, "Not written yet ..."
+                stop
+            endif
         else
-            RP = step_vec*sideLength*0.5_dp +sideLength*0.25_dp ! only sample near center away from edges
+            call random_number(step_vec, rand_stat)
+            if (periodic) then
+                RP = step_vec*sideLength
+            else
+                RP = (step_vec)*(sideLength-L_big_real) + L_big_real/2.0_dp
+            endif
         endif
+
         success = .not. isCollision(bin, NT, R_real, RP, L_big_real, -1, periodic, sideLength)
         if (success) widom_successes = widom_successes+1
         widom_attempts = widom_attempts + 1
@@ -264,9 +285,9 @@ enddo
 if (verbose) then
     print*, "----------------------------------------------------"
     print*, "Done"
-    !do ii=1, NT
-    !    print*, R_real(:,ii)
-    !enddo
+    do ii=1, NT
+        print*, R_real(:,ii)
+    enddo
     print*, "Average position", [sum(R_real(1,:))/NT, sum(R_real(2,:))/NT, sum(R_real(3,:))/NT]
     print*, "widom success rate", real(widom_successes,dp)/real(widom_attempts,dp)
     print*, "move success rate", real(move_success,dp)/real(move_attempts,dp)

@@ -285,14 +285,15 @@ enddo
 if (verbose) then
     print*, "----------------------------------------------------"
     print*, "Done"
-    do ii=1, NT
-        print*, R_real(:,ii)
-    enddo
+    !do ii=1, NT
+    !    print*, R_real(:,ii)
+    !enddo
     print*, "Average position", [sum(R_real(1,:))/NT, sum(R_real(2,:))/NT, sum(R_real(3,:))/NT]
     print*, "widom success rate", real(widom_successes,dp)/real(widom_attempts,dp)
     print*, "move success rate", real(move_success,dp)/real(move_attempts,dp)
     print*, "Phi ", real(NT,dp)*(L_big_real**3)/(sideLength**3)
     if (trackLowest) print*, "bin_counts", bin_counts
+    print*, "No. of succeses", widom_successes
     print*, "of total", widom_attempts
 endif
 phi = real(NT,dp)*(L_big_real**3)/(sideLength**3)
